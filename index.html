@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Survival Island</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#176b35">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;
+ overflow:hidden;
+ background:#101820;
+ color:white;
+ font-family:Arial,sans-serif;
+ touch-action:none;
+}
+canvas{
+ display:block;
+ width:100vw;
+ height:100vh;
+ background:#7ec850;
+}
+#hud{
+ position:fixed;
+ top:10px;
+ left:10px;
+ right:10px;
+ z-index:5;
+ background:#0009;
+ border-radius:12px;
+ padding:8px;
+ font-size:14px;
+}
+.bar{
+ height:10px;
+ background:#333;
+ border-radius:8px;
+ overflow:hidden;
+ margin:3px 0;
+}
+.fill{height:100%}
+#hp{background:#e53935}
+#food{background:#ff9800}
+#water{background:#29b6f6}
+
+#info{
+ position:fixed;
+ top:10px;
+ right:10px;
+ z-index:6;
+ background:#0009;
+ padding:8px 10px;
+ border-radius:10px;
+}
+
+#controls{
+ position:fixed;
+ bottom:18px;
+ left:18px;
+ z-index:8;
+ display:grid;
+ grid-template-columns:60px 60px 60px;
+ grid-template-rows:60px 60px;
+ gap:5px;
+}
+.btn{
+ border:1px solid #ffffff55;
+ background:#0008;
+ color:white;
+ border-radius:15px;
+ font-size:25px;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ user-select:none;
+}
+.up{grid-column:2}
+.left{grid-column:1;grid-row:2}
+.down{grid-column:2;grid-row:2}
+.right{grid-column:3;grid-row:2}
+
+#actions{
+ position:fixed;
+ right:15px;
+ bottom:18px;
+ z-index:8;
+ display:flex;
+ flex-direction:column;
+ gap:8px;
+}
+.action{
+ padding:12px 14px;
+ border:0;
+ border-radius:12px;
+ background:#176b35;
+ color:white;
+ font-weight:bold;
+}
+
+#gameover{
+ position:fixed;
+ inset:0;
+ z-index:20;
+ display:none;
+ align-items:center;
+ justify-content:center;
+ background:#000b;
+ text-align:center;
+}
+.box{
+ background:#18251d;
+ padding:30px;
+ border-radius:20px;
+ width:85%;
+ max-width:400px;
+}
+.box button{
+ padding:13px 25px;
+ border:0;
+ border-radius:12px;
+ background:#2e9b50;
+ color:white;
+ font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+ ❤️ <span id="hpText">100</span>
+ <div class="bar"><div id="hp" class="fill" style="width:100%"></div></div>
+
+ 🍖 <span id="foodText">100</span>
+ <div class="bar"><div id="food" class="fill" style="width:100%"></div></div>
+
+ 💧 <span id="waterText">100</span>
+ <div class="bar"><div id="water" class="fill" style="width:100%"></div></div>
+
+ 🪵 <span id="woodText">0</span>
+ 🪨 <span id="stoneText">0</span>
+ 🫐 <span id="berryText">0</span>
+</div>
+
+<div id="info">☀️ Ngày</div>
+
+<div id="controls">
+ <div class="btn up" data-key="up">▲</div>
+ <div class="btn left" data-key="left">◀</div>
+ <div class="btn down" data-key="down">▼</div>
+ <div class="btn right" data-key="right">▶</div>
+</div>
+
+<div id="actions">
+ <button class="action" onclick="eat()">🍓 Ăn</button>
+ <button class="action" onclick="drink()">💧 Uống</button>
+ <button class="action" onclick="gather()">⛏️ Thu thập</button>
+ <button class="action" onclick="build()">🏠 Xây nhà</button>
+</div>
+
+<div id="gameover">
+ <div class="box">
+  <h1>💀 Bạn đã sống sót thất bại!</h1>
+  <p id="reason"></p>
+  <button onclick="location.reload()">🔄 Chơi lại</button>
+ </div>
+</div>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+function resize(){
+ canvas.width=innerWidth;
+ canvas.height=innerHeight;
+}
+resize();
+addEventListener("resize",resize);
+
+let player={
+ x:canvas.width/2,
+ y:canvas.height/2+100,
+ r:15,
+ speed:3
+};
+
+let hp=100,food=100,water=100;
+let wood=0,stone=0,berry=0;
+let time=0;
+let dead=false;
+
+let keys={up:false,down:false,left:false,right:false};
+
+const trees=[];
+const rocks=[];
+const berries=[];
+const houses=[];
+const zombies=[];
+
+function rand(a,b){
+ return Math.random()*(b-a)+a;
+}
+
+function distance(a,b){
+ return Math.hypot(a.x-b.x,a.y-b.y);
+}
+
+function spawn(){
+ for(let i=0;i<28;i++){
+  trees.push({
+   x:rand(30,canvas.width-30),
+   y:rand(80,canvas.height-30),
+   r:22
+  });
+ }
+
+ for(let i=0;i<18;i++){
+  rocks.push({
+   x:rand(30,canvas.width-30),
+   y:rand(80,canvas.height-30),
+   r:18
+  });
+ }
+
+ for(let i=0;i<15;i++){
+  berries.push({
+   x:rand(30,canvas.width-30),
+   y:rand(80,canvas.height-30),
+   r:13
+  });
+ }
+}
+spawn();
+
+const lake={
+ x:canvas.width/2,
+ y:canvas.height/2-100,
+ r:75
+};
+
+function drawBackground(){
+ ctx.fillStyle="#75b84a";
+ ctx.fillRect(0,0,canvas.width,canvas.height);
+
+ // cỏ
+ ctx.fillStyle="#69a943";
+ for(let i=0;i<150;i++){
+  let x=(i*97)%canvas.width;
+  let y=(i*53)%canvas.height;
+  ctx.fillRect(x,y,2,7);
+ }
+
+ // hồ
+ ctx.beginPath();
+ ctx.arc(lake.x,lake.y,lake.r,0,Math.PI*2);
+ ctx.fillStyle="#36a9e1";
+ ctx.fill();
+ ctx.strokeStyle="#207da8";
+ ctx.stroke();
+
+ trees.forEach(t=>{
+  ctx.fillStyle="#70452b";
+  ctx.fillRect(t.x-5,t.y,10,22);
+  ctx.beginPath();
+  ctx.arc(t.x,t.y,22,0,Math.PI*2);
+  ctx.fillStyle="#176b35";
+  ctx.fill();
+ });
+
+ rocks.forEach(r=>{
+  ctx.beginPath();
+  ctx.arc(r.x,r.y,r.r,0,Math.PI*2);
+  ctx.fillStyle="#777";
+  ctx.fill();
+ });
+
+ berries.forEach(b=>{
+  ctx.fillStyle="#2d8a3d";
+  ctx.beginPath();
+  ctx.arc(b.x,b.y,12,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle="#e91e63";
+  ctx.beginPath();
+  ctx.arc(b.x-5,b.y-3,3,0,Math.PI*2);
+  ctx.arc(b.x+4,b.y,3,0,Math.PI*2);
+  ctx.fill();
+ });
+
+ houses.forEach(h=>{
+  ctx.fillStyle="#9b632f";
+  ctx.fillRect(h.x-25,h.y-20,50,40);
+  ctx.fillStyle="#653c20";
+  ctx.beginPath();
+  ctx.moveTo(h.x-32,h.y-20);
+  ctx.lineTo(h.x,h.y-48);
+  ctx.lineTo(h.x+32,h.y-20);
+  ctx.fill();
+ });
+}
+
+function drawPlayer(){
+ ctx.beginPath();
+ ctx.arc(player.x,player.y,player.r,0,Math.PI*2);
+ ctx.fillStyle="#ffd54f";
+ ctx.fill();
+ ctx.strokeStyle="#222";
+ ctx.stroke();
+
+ ctx.fillStyle="#222";
+ ctx.beginPath();
+ ctx.arc(player.x-5,player.y-3,2,0,Math.PI*2);
+ ctx.arc(player.x+5,player.y-3,2,0,Math.PI*2);
+ ctx.fill();
+}
+
+function drawZombies(){
+ zombies.forEach(z=>{
+  ctx.beginPath();
+  ctx.arc(z.x,z.y,16,0,Math.PI*2);
+  ctx.fillStyle="#7b1fa2";
+  ctx.fill();
+
+  ctx.fillStyle="red";
+  ctx.beginPath();
+  ctx.arc(z.x-5,z.y-3,3,0,Math.PI*2);
+  ctx.arc(z.x+5,z.y-3,3,0,Math.PI*2);
+  ctx.fill();
+ });
+}
+
+function move(){
+ let dx=0,dy=0;
+
+ if(keys.left)dx--;
+ if(keys.right)dx++;
+ if(keys.up)dy--;
+ if(keys.down)dy++;
+
+ if(dx||dy){
+  let len=Math.hypot(dx,dy);
+  player.x+=dx/len*player.speed;
+  player.y+=dy/len*player.speed;
+ }
+
+ player.x=Math.max(15,Math.min(canvas.width-15,player.x));
+ player.y=Math.max(60,Math.min(canvas.height-15,player.y));
+}
+
+function gather(){
+ let collected=false;
+
+ for(let i=trees.length-1;i>=0;i--){
+  if(distance(player,trees[i])<45){
+   wood+=2;
+   trees.splice(i,1);
+   collected=true;
+   break;
+  }
+ }
+
+ if(!collected){
+  for(let i=rocks.length-1;i>=0;i--){
+   if(distance(player,rocks[i])<40){
+    stone+=2;
+    rocks.splice(i,1);
+    collected=true;
+    break;
+   }
+  }
+ }
+
+ if(!collected){
+  for(let i=berries.length-1;i>=0;i--){
+   if(distance(player,berries[i])<40){
+    berry+=2;
+    berries.splice(i,1);
+    collected=true;
+    break;
+   }
+  }
+ }
+}
+
+function eat(){
+ if(berry>0){
+  berry--;
+  food=Math.min(100,food+25);
+ }
+}
+
+function drink(){
+ if(distance(player,lake)<lake.r+15){
+  water=100;
+ }
+}
+
+function build(){
+ if(wood>=5 && stone>=3){
+  wood-=5;
+  stone-=3;
+  houses.push({x:player.x,y:player.y});
+ }
+}
+
+function spawnZombie(){
+ let side=Math.floor(Math.random()*4);
+ let x,y;
+
+ if(side===0){x=0;y=rand(70,canvas.height)}
+ if(side===1){x=canvas.width;y=rand(70,canvas.height)}
+ if(side===2){x=rand(0,canvas.width);y=70}
+ if(side===3){x=rand(0,canvas.width);y=canvas.height}
+
+ zombies.push({x,y});
+}
+
+function updateZombies(){
+ zombies.forEach(z=>{
+  let dx=player.x-z.x;
+  let dy=player.y-z.y;
+  let len=Math.hypot(dx,dy)||1;
+
+  z.x+=dx/len*0.8;
+  z.y+=dy/len*0.8;
+
+  if(distance(player,z)<28){
+   hp-=0.08;
+  }
+ });
+}
+
+function updateStats(){
+ food-=0.012;
+ water-=0.018;
+
+ if(food<=0)hp-=0.04;
+ if(water<=0)hp-=0.07;
+
+ if(hp<=0){
+  hp=0;
+  dead=true;
+  document.getElementById("reason").textContent=
+   "Bạn đã không thể tiếp tục sinh tồn.";
+  document.getElementById("gameover").style.display="flex";
+ }
+
+ document.getElementById("hpText").textContent=Math.floor(hp);
+ document.getElementById("foodText").textContent=Math.floor(food);
+ document.getElementById("waterText").textContent=Math.floor(water);
+
+ document.getElementById("woodText").textContent=wood;
+ document.getElementById("stoneText").textContent=stone;
+ document.getElementById("berryText").textContent=berry;
+
+ document.getElementById("hp").style.width=hp+"%";
+ document.getElementById("food").style.width=Math.max(0,food)+"%";
+ document.getElementById("water").style.width=Math.max(0,water)+"%";
+}
+
+function updateDayNight(){
+ time++;
+
+ let night=(time%1200)>750;
+
+ if(night){
+  ctx.fillStyle="rgba(10,15,40,.45)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  document.getElementById("info").textContent="🌙 Ban đêm";
+
+  if(time%100===0)spawnZombie();
+ }else{
+  document.getElementById("info").textContent="☀️ Ban ngày";
+ }
+}
+
+function loop(){
+ if(dead)return;
+
+ move();
+
+ updateZombies();
+
+ drawBackground();
+ drawZombies();
+ drawPlayer();
+
+ let night=(time%1200)>750;
+
+ if(night){
+  ctx.fillStyle="rgba(10,15,40,.45)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+ }
+
+ updateDayNight();
+ updateStats();
+
+ requestAnimationFrame(loop);
+}
+
+document.querySelectorAll(".btn").forEach(btn=>{
+ const key=btn.dataset.key;
+
+ const on=()=>keys[key]=true;
+ const off=()=>keys[key]=false;
+
+ btn.addEventListener("touchstart",e=>{
+  e.preventDefault();
+  on();
+ },{passive:false});
+
+ btn.addEventListener("touchend",e=>{
+  e.preventDefault();
+  off();
+ },{passive:false});
+
+ btn.addEventListener("mousedown",on);
+ btn.addEventListener("mouseup",off);
+ btn.addEventListener("mouseleave",off);
+});
+
+addEventListener("keydown",e=>{
+ if(e.key==="ArrowUp"||e.key==="w")keys.up=true;
+ if(e.key==="ArrowDown"||e.key==="s")keys.down=true;
+ if(e.key==="ArrowLeft"||e.key==="a")keys.left=true;
+ if(e.key==="ArrowRight"||e.key==="d")keys.right=true;
+});
+
+addEventListener("keyup",e=>{
+ if(e.key==="ArrowUp"||e.key==="w")keys.up=false;
+ if(e.key==="ArrowDown"||e.key==="s")keys.down=false;
+ if(e.key==="ArrowLeft"||e.key==="a")keys.left=false;
+ if(e.key==="ArrowRight"||e.key==="d")keys.right=false;
+});
+
+// PWA
+if("serviceWorker" in navigator){
+ window.addEventListener("load",()=>{
+  navigator.serviceWorker.register("./sw.js").catch(()=>{});
+ });
+}
+
+loop();
+</script>
+
+</body>
+  </html>
